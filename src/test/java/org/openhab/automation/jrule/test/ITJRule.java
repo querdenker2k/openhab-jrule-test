@@ -113,6 +113,8 @@ public class ITJRule {
             openhabContainer.execInContainer("rm", "/openhab/userdata/example.txt");
         }
         sendCommand("MyTestDisturbanceSwitch", "OFF");
+        sendCommand("MyTestSwitch", "OFF");
+        sendCommand("MyTestSwitch2", "OFF");
     }
 
     @Test
@@ -230,7 +232,6 @@ public class ITJRule {
     @Test
     public void testGroupMySwitchesChanged() throws IOException {
         sendCommand("MyTestSwitch", "ON");
-        sendCommand("MyTestSwitch", "OFF");
         verifyRuleWasExecuted("[groupMySwitchesChanged]");
     }
 
