@@ -4,6 +4,7 @@ import org.openhab.automation.jrule.items.JRuleSwitchItem;
 import org.openhab.automation.jrule.items.generated.JRuleItems;
 import org.openhab.automation.jrule.items.generated._MyMessageNotification;
 import org.openhab.automation.jrule.items.generated._MySwitchGroup;
+import org.openhab.automation.jrule.items.generated._MyTemperatureSensor;
 import org.openhab.automation.jrule.items.generated._MyTestDisturbanceSwitch;
 import org.openhab.automation.jrule.items.generated._MyTestNumber;
 import org.openhab.automation.jrule.items.generated._MyTestSwitch;
@@ -14,19 +15,24 @@ import org.openhab.automation.jrule.rules.JRuleName;
 import org.openhab.automation.jrule.rules.JRulePrecondition;
 import org.openhab.automation.jrule.rules.JRuleTag;
 import org.openhab.automation.jrule.rules.JRuleWhenChannelTrigger;
+import org.openhab.automation.jrule.rules.JRuleWhenCronTrigger;
 import org.openhab.automation.jrule.rules.JRuleWhenItemChange;
 import org.openhab.automation.jrule.rules.JRuleWhenItemReceivedCommand;
 import org.openhab.automation.jrule.rules.JRuleWhenThingTrigger;
+import org.openhab.automation.jrule.rules.JRuleWhenTimeTrigger;
 import org.openhab.automation.jrule.rules.event.JRuleChannelEvent;
 import org.openhab.automation.jrule.rules.event.JRuleEvent;
 import org.openhab.automation.jrule.rules.event.JRuleItemEvent;
 import org.openhab.automation.jrule.rules.event.JRuleThingEvent;
+import org.openhab.automation.jrule.rules.event.JRuleTimerEvent;
 import org.openhab.automation.jrule.rules.value.JRuleOnOffValue;
 import org.openhab.automation.jrule.things.JRuleThingStatus;
 
+import static org.openhab.automation.jrule.trigger.JRuleSwitchTrigger.ON;
+
 public class TestRules extends JRule {
     @JRuleName("MyRuleTurnSwitch2On")
-    @JRuleWhenItemChange(item = _MyTestSwitch.ITEM, to = JRuleSwitchItem.ON)
+    @JRuleWhenItemChange(item = _MyTestSwitch.ITEM, to = ON)
     @JRuleTag({"item", "change"})
     public void myRuleTurnSwitch2On(JRuleEvent event) {
         logInfo("triggered with item change: {}, state: {}, oldState: {}",
@@ -77,7 +83,34 @@ public class TestRules extends JRule {
         logInfo("thing '{}' goes '{}'", offlineThingUID, status);
     }
 
+    @JRuleName("SetDayBrightness")
+    @JRuleWhenTimeTrigger(hours=22, minutes=30)
+    public synchronized void setDayBrightness(JRuleEvent event) {
+        logInfo("Setting night brightness to 30%");
+        int dimLevel = 30;
+        JRuleItems.MyDimmerBrightness.sendCommand(dimLevel);
+    }
 
+    @JRuleName("turnOnFanIfTemperatureIsLow")
+    @JRuleWhenItemChange(item = _MyTemperatureSensor.ITEM, condition = @JRuleCondition(lte = 20))
+    public synchronized void turnOnFanIfTemperatureIsLow(JRuleEvent event) {
+        logInfo("Starting fan since temperature dropped below 20");
+        JRuleItems.MyHeatingFanSwitch.sendCommand(JRuleOnOffValue.ON);
+    }
+
+    @JRuleName("groupMySwitchesChanged")
+    @JRuleWhenItemChange(item = _MySwitchGroup.ITEM)
+    public synchronized void groupMySwitchGroupChanged(JRuleEvent event) {
+        final boolean groupIsOnline = ((JRuleItemEvent) event).getState().getValueAsOnOffValue() == JRuleOnOffValue.ON;
+        final String memberThatChangedStatus = ((JRuleItemEvent) event).getMemberName();
+        logInfo("Member that changed the status of the Group of switches: {}", memberThatChangedStatus);
+    }
+
+    @JRuleName("testCron")
+    @JRuleWhenCronTrigger(cron = "*/5 * * * * *")
+    public void testCron(JRuleEvent event) {
+        logInfo("CRON: Running cron from string every 5 seconds: {}", event);
+    }
 
 
 //    @JRuleName("trigger with channel")

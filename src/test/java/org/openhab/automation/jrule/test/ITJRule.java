@@ -3,7 +3,6 @@ package org.openhab.automation.jrule.test;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.io.IOUtils;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -120,30 +119,30 @@ public class ITJRule {
     public void testMyRuleTurnSwitch2On() throws IOException {
         sendCommand("MyTestSwitch", "OFF");
         sendCommand("MyTestSwitch", "ON");
-        wasRuleExecuted("[MyRuleTurnSwitch2On]");
+        verifyRuleWasExecuted("[MyRuleTurnSwitch2On]");
     }
 
     @Test
     public void testTestExecutingCommandLine() throws IOException, InterruptedException {
         sendCommand("MySwitchGroup", "ON");
-        wasRuleExecuted("[TestExecutingCommandLine]");
+        verifyRuleWasExecuted("[TestExecutingCommandLine]");
         verifyFileExist();
     }
 
     @Test
     public void testChannelTriggered() throws MqttException {
         publishMqttMessage("number/state", "123");
-        wasRuleExecuted("[ChannelTriggered]");
+        verifyRuleWasExecuted("[ChannelTriggered]");
     }
 
     @Test
     public void testTestPrecondition() throws IOException, InterruptedException {
         sendCommand("MyMessageNotification", "abc");
-        wasRuleNotExecuted("[MyTestPreConditionRule1]");
+        verifyRuleWasNotExecuted("[MyTestPreConditionRule1]");
 
         sendCommand("MyTestDisturbanceSwitch", "ON");
         sendCommand("MyMessageNotification", "abc");
-        wasRuleExecuted("[MyTestPreConditionRule1]");
+        verifyRuleWasExecuted("[MyTestPreConditionRule1]");
     }
 
     @Test
@@ -161,7 +160,7 @@ public class ITJRule {
                 .pollInterval(200, TimeUnit.MILLISECONDS)
                 .await("thing offline")
                 .until(() -> getThingState("mqtt:topic:mqtt:generic"), s -> s.equals("OFFLINE"));
-        wasRuleExecuted("[Log every thing that goes offline]");
+        verifyRuleWasExecuted("[Log every thing that goes offline]");
     }
 
     private static void publishMqttMessage(String topic, String message) throws MqttException {
@@ -188,7 +187,7 @@ public class ITJRule {
         }
     }
 
-    private void wasRuleExecuted(String ruleLogLine) {
+    private void verifyRuleWasExecuted(String ruleLogLine) {
         Awaitility.await().with()
                 .timeout(10, TimeUnit.SECONDS)
                 .pollInterval(200, TimeUnit.MILLISECONDS)
@@ -196,22 +195,48 @@ public class ITJRule {
                 .until(() -> logLines, v -> containsLine(ruleLogLine, v));
     }
 
-    private void wasRuleNotExecuted(String ruleLogLine) throws InterruptedException {
-        Thread.sleep(1000);
+    private void verifyRuleWasNotExecuted(String ruleLogLine) {
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            // no problem here
+        }
         Assertions.assertTrue(notContainsLine(ruleLogLine, logLines));
     }
 
     @Test
     public void testMyEventValueTest() throws IOException {
         sendCommand("MyTestSwitch2", "ON");
-        wasRuleExecuted("[MyEventValueTest]");
+        verifyRuleWasExecuted("[MyEventValueTest]");
     }
 
     @Test
     public void testMyNumberRule1() throws IOException {
         sendCommand("MyTestNumber", "14");
         sendCommand("MyTestNumber", "10");
-        wasRuleExecuted("[MyNumberRule1]");
+        verifyRuleWasExecuted("[MyNumberRule1]");
+    }
+
+    @Test
+    public void testTurnOnFanIfTemperatureIsLow() throws IOException {
+        sendCommand("MyTemperatureSensor", "22");
+        verifyRuleWasNotExecuted("[turnOnFanIfTemperatureIsLow]");
+        sendCommand("MyTemperatureSensor", "21");
+        verifyRuleWasNotExecuted("[turnOnFanIfTemperatureIsLow]");
+        sendCommand("MyTemperatureSensor", "20");
+        verifyRuleWasExecuted("[turnOnFanIfTemperatureIsLow]");
+    }
+
+    @Test
+    public void testGroupMySwitchesChanged() throws IOException {
+        sendCommand("MyTestSwitch", "ON");
+        sendCommand("MyTestSwitch", "OFF");
+        verifyRuleWasExecuted("[groupMySwitchesChanged]");
+    }
+
+    @Test
+    public void testTestCron() {
+        verifyRuleWasExecuted("[testCron]");
     }
 
     private boolean containsLine(String line, List<String> logLines) {
