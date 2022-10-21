@@ -1,0 +1,13 @@
+# copy engine to oh docker
+sudo cp /home/robert/IdeaProjects/jrule/source/target/org.openhab.automation.jrule-3.4.0-SNAPSHOT.jar /home/robert/IdeaProjects/jrule/test/src/test/resources/docker/addons/org.openhab.automation.jrule-3.4.0-SNAPSHOT.jar
+
+# copy rules to oh docker
+sudo cp /home/robert/IdeaProjects/jrule/test/target/test-1.0-SNAPSHOT.jar /home/robert/IdeaProjects/jrule/test/src/test/resources/docker/conf/automation/jrule/rules-jar/openhab-sample-rules-1.0-SNAPSHOT.jar
+
+# copy generated rule from oh docker
+# cp /home/robert/IdeaProjects/jrule/test/src/test/resources/docker/conf/automation/jrule/jar/jrule-items.jar /home/robert/IdeaProjects/jrule/sample/lib/jrule.jar
+
+# test mqtt
+apt update && apt install mosquitto-clients -y
+mosquitto_pub -h mqtt -t number/state -m "100" -d
+mosquitto_sub -h mqtt -p 1883 -t number -d

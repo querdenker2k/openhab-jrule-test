@@ -1,0 +1,28 @@
+version: "3.3"
+services:
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: mqtt
+    hostname: mqtt
+    user: "${UID}:${GID}"
+    ports:
+      - "1883:1883"
+    volumes:
+      - ${PWD}/docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ${PWD}/docker/mosquitto/default.acl:/mosquitto/config/default.acl:ro
+    restart: always
+  openhab:
+    image: openhab/openhab:3.3.0-debian
+    container_name: openhab
+    hostname: openhab
+    ports:
+      - "8088:8080"
+    restart: always
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ${PWD}/docker/conf:/openhab/conf
+      - ${PWD}/docker/userdata:/openhab/userdata
+      - ${PWD}/docker/addons:/openhab/addons
+    depends_on:
+      - mqtt

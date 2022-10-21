@@ -1,0 +1,7 @@
+Group           MySwitchGroup
+Number			MqttNumber
+String          MyMessageNotification
+Switch          MyTestDisturbanceSwitch
+Number          MyTestNumber
+Switch          MyTestSwitch                (MySwitchGroup)
+Switch          MyTestSwitch2               (MySwitchGroup)
