@@ -13,10 +13,13 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.awaitility.Awaitility;
 import org.eclipse.paho.client.mqttv3.IMqttClient;
+import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +50,7 @@ public class ITJRule {
     private static final Network network = Network.newNetwork();
     private static final List<String> logLines = new ArrayList<>();
     private static final Logger log = LoggerFactory.getLogger(ITJRule.class);
+    private final List<String> receivedMqttMessages = new ArrayList<>();
 
     @SuppressWarnings("resource")
     private static final GenericContainer<?> mqttContainer = new GenericContainer<>("eclipse-mosquitto:2.0")
@@ -77,16 +81,17 @@ public class ITJRule {
                 logLines.add(outputFrame.getUtf8String().strip());
                 new Slf4jLogConsumer(LoggerFactory.getLogger("docker.openhab")).accept(outputFrame);
             })
-            .waitingFor(new LogMessageWaitStrategy().withRegEx(".*JRule Engine Initializing done.*"))
+            .waitingFor(new LogMessageWaitStrategy().withRegEx(".*JRule Engine Rules Reloaded.*"))
             .withNetwork(network)
             .dependsOn(toxiproxyContainer)
             .withPrivilegedMode(true);
 
     private static FileInputStream fis;
     private static ToxiproxyContainer.ContainerProxy mqttProxy;
+    private @NotNull IMqttClient mqttClient;
 
     @BeforeAll
-    static void initClass() throws IOException {
+    static void initClass() throws IOException, MqttException {
         if (!Boolean.parseBoolean(System.getProperty(SKIP_DOCKER, "false"))) {
             openhabContainer.start();
             mqttProxy = toxiproxyContainer.getProxy(mqttContainer, 1883);
@@ -103,8 +108,31 @@ public class ITJRule {
                 .until(() -> getThingState("mqtt:topic:mqtt:generic"), s -> s.equals("ONLINE"));
     }
 
+    private void subscribeMqtt(String topic) throws MqttException {
+
+        mqttClient.subscribe(topic, (s, mqttMessage) ->
+                receivedMqttMessages.add(new String(mqttMessage.getPayload(), StandardCharsets.UTF_8)));
+    }
+
+    @NotNull
+    private static IMqttClient getMqttClient() throws MqttException {
+        IMqttClient publisher = new MqttClient(String.format("tcp://%s:%s", getMqttHost(), getMqttPort()), "ITJRule");
+        MqttConnectOptions options = getMqttConnectOptions();
+        publisher.connect(options);
+        return publisher;
+    }
+
+    @NotNull
+    private static MqttConnectOptions getMqttConnectOptions() {
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setAutomaticReconnect(true);
+        options.setCleanSession(true);
+        options.setConnectionTimeout(2);
+        return options;
+    }
+
     @BeforeEach
-    void initTest() throws IOException, InterruptedException {
+    void initTest() throws IOException, InterruptedException, MqttException {
         mqttProxy.setConnectionCut(false);
         logLines.clear();
         if (Boolean.parseBoolean(System.getProperty(SKIP_DOCKER, "false"))) {
@@ -115,6 +143,16 @@ public class ITJRule {
         sendCommand("MyTestDisturbanceSwitch", "OFF");
         sendCommand("MyTestSwitch", "OFF");
         sendCommand("MyTestSwitch2", "OFF");
+
+        mqttClient = getMqttClient();
+        subscribeMqtt("number/state");
+    }
+
+    @AfterEach
+    void unloadTest() throws MqttException {
+        if (mqttClient != null) {
+            mqttClient.disconnect();
+        }
     }
 
     @Test
@@ -129,6 +167,17 @@ public class ITJRule {
         sendCommand("MySwitchGroup", "ON");
         verifyRuleWasExecuted("[TestExecutingCommandLine]");
         verifyFileExist();
+    }
+
+    @Test
+    public void testTestAction() throws IOException, InterruptedException {
+        sendCommand("MyMqttTrigger", "ON");
+        verifyRuleWasExecuted("[TestAction]");
+        verifyMqttMessageReceived("1313131");
+    }
+
+    private void verifyMqttMessageReceived(String s) {
+        Assertions.assertTrue(receivedMqttMessages.contains(s));
     }
 
     @Test
@@ -166,13 +215,7 @@ public class ITJRule {
     }
 
     private static void publishMqttMessage(String topic, String message) throws MqttException {
-        IMqttClient publisher = new MqttClient(String.format("tcp://%s:%s", getMqttHost(), getMqttPort()), "ITJRule");
-
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setAutomaticReconnect(true);
-        options.setCleanSession(true);
-        options.setConnectionTimeout(2);
-        publisher.connect(options);
+        IMqttClient publisher = getMqttClient();
 
         MqttMessage msg = new MqttMessage(message.getBytes(StandardCharsets.UTF_8));
         msg.setQos(0);

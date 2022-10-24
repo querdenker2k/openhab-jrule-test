@@ -8,3 +8,4 @@ Switch          MyTestSwitch2               (MySwitchGroup)
 Number          MyDimmerBrightness
 Number          MyTemperatureSensor
 Switch          MyHeatingFanSwitch
+Switch          MyMqttTrigger
