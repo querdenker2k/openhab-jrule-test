@@ -2,6 +2,7 @@ package org.openhab.automation.jrule.rules.user;
 
 import org.openhab.automation.jrule.items.generated.JRuleItems;
 import org.openhab.automation.jrule.items.generated._MySwitchGroup;
+import org.openhab.automation.jrule.items.generated._MyTestSwitch2;
 import org.openhab.automation.jrule.rules.JRule;
 import org.openhab.automation.jrule.rules.JRuleName;
 import org.openhab.automation.jrule.rules.JRuleWhenItemChange;
@@ -23,11 +24,11 @@ public class TestRules extends JRule {
 //        JRuleItems.MyTestSwitch2.sendCommand(JRuleOnOffValue.ON);
 //    }
 //
-//    @JRuleName("MyEventValueTest")
-//    @JRuleWhenItemReceivedCommand(item = _MyTestSwitch2.ITEM)
-//    public void myEventValueTest(JRuleEvent event) {
-//        logInfo("Got value from event: {}", ((JRuleItemEvent) event).getState().getValue());
-//    }
+    @JRuleName("ItemCommandTrigger")
+    @JRuleWhenItemReceivedCommand(item = _MyTestSwitch2.ITEM)
+    public void itemCommandTrigger(JRuleItemEvent event) {
+        logInfo("Got value from event: {}", event.getState().getValue());
+    }
 //
 //    @JRuleName("MyNumberRule1")
 //    @JRuleWhenItemChange(item = _MyTestNumber.ITEM, from = "14", to = "10")

@@ -259,9 +259,9 @@ public class ITJRule {
     }
 
     @Test
-    public void testMyEventValueTest() throws IOException {
+    public void testItemCommandTrigger() throws IOException {
         sendCommand("MyTestSwitch2", "ON");
-        verifyRuleWasExecuted("[MyEventValueTest]");
+        verifyRuleWasExecuted("[ItemCommandTrigger]");
     }
 
     @Test
