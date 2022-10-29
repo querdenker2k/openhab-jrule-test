@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.classic.methods.HttpPut;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
@@ -13,12 +14,12 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.awaitility.Awaitility;
 import org.eclipse.paho.client.mqttv3.IMqttClient;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -26,7 +27,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.Container;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
@@ -40,6 +40,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -70,7 +72,6 @@ public class ITJRule {
     private static final GenericContainer<?> openhabContainer = new GenericContainer<>("openhab/openhab:3.3.0-debian")
             .withCopyFileToContainer(MountableFile.forHostPath("/etc/localtime"), "/etc/localtime")
             .withCopyFileToContainer(MountableFile.forHostPath("/etc/timezone"), "/etc/timezone")
-            .withClasspathResourceMapping("docker/tmp", "/openhab/conf/automation/jrule/jar", BindMode.READ_WRITE)
             .withCopyToContainer(MountableFile.forClasspathResource("docker/conf"), "/openhab/conf")
             .withCopyFileToContainer(MountableFile.forClasspathResource("docker/log4j2.xml", 777), "/openhab/userdata/etc/log4j2.xml")
             .withCopyFileToContainer(MountableFile.forClasspathResource("docker/users.json", 777), "/openhab/userdata/jsondb/users.json")
@@ -81,7 +82,8 @@ public class ITJRule {
                 logLines.add(outputFrame.getUtf8String().strip());
                 new Slf4jLogConsumer(LoggerFactory.getLogger("docker.openhab")).accept(outputFrame);
             })
-            .waitingFor(new LogMessageWaitStrategy().withRegEx(".*JRule Engine Rules Reloaded.*"))
+            .waitingFor(new LogMessageWaitStrategy().withRegEx(".*JRule Engine Rules Reloaded.*")
+                    .withStartupTimeout(Duration.of(60, ChronoUnit.SECONDS)))
             .withNetwork(network)
             .dependsOn(toxiproxyContainer)
             .withPrivilegedMode(true);
@@ -108,6 +110,30 @@ public class ITJRule {
                 .until(() -> getThingState("mqtt:topic:mqtt:generic"), s -> s.equals("ONLINE"));
     }
 
+    @BeforeEach
+    void initTest() throws IOException, InterruptedException, MqttException {
+        mqttProxy.setConnectionCut(false);
+        logLines.clear();
+        if (Boolean.parseBoolean(System.getProperty(SKIP_DOCKER, "false"))) {
+            new File("src/test/resources/docker/userdata/example.txt").delete();
+        } else {
+            openhabContainer.execInContainer("rm", "/openhab/userdata/example.txt");
+        }
+        sendCommand("MyTestDisturbanceSwitch", "OFF");
+        sendCommand("MyTestSwitch", "OFF");
+        sendCommand("MyTestSwitch2", "OFF");
+
+        mqttClient = getMqttClient();
+        subscribeMqtt("number/state");
+    }
+
+    @AfterAll
+    static void testFinished() {
+        if (openhabContainer != null && openhabContainer.isRunning()) {
+            openhabContainer.copyFileFromContainer("/openhab/conf/automation/jrule/jar/jrule-generated.jar", "lib/jrule-generated.jar");
+        }
+    }
+
     private void subscribeMqtt(String topic) throws MqttException {
 
         mqttClient.subscribe(topic, (s, mqttMessage) ->
@@ -129,23 +155,6 @@ public class ITJRule {
         options.setCleanSession(true);
         options.setConnectionTimeout(2);
         return options;
-    }
-
-    @BeforeEach
-    void initTest() throws IOException, InterruptedException, MqttException {
-        mqttProxy.setConnectionCut(false);
-        logLines.clear();
-        if (Boolean.parseBoolean(System.getProperty(SKIP_DOCKER, "false"))) {
-            new File("src/test/resources/docker/userdata/example.txt").delete();
-        } else {
-            openhabContainer.execInContainer("rm", "/openhab/userdata/example.txt");
-        }
-        sendCommand("MyTestDisturbanceSwitch", "OFF");
-        sendCommand("MyTestSwitch", "OFF");
-        sendCommand("MyTestSwitch2", "OFF");
-
-        mqttClient = getMqttClient();
-        subscribeMqtt("number/state");
     }
 
     @AfterEach
@@ -279,6 +288,45 @@ public class ITJRule {
     }
 
     @Test
+    public void testMemberOfCommandTrigger() throws IOException {
+        sendCommand("MyTestSwitch", "ON");
+        verifyRuleWasExecuted("[MemberOfCommandTrigger]");
+        logLines.clear();
+        sendCommand("MyTestSwitch", "ON");
+        verifyRuleWasExecuted("[MemberOfCommandTrigger]");
+        logLines.clear();
+        sendCommand("MyTestSwitch2", "ON");
+        verifyRuleWasExecuted("[MemberOfCommandTrigger]");
+        logLines.clear();
+        sendCommand("MyTestSwitch2", "ON");
+        verifyRuleWasExecuted("[MemberOfCommandTrigger]");
+    }
+
+    @Test
+    public void testMemberOfUpdateTrigger() throws IOException {
+        postUpdate("MyTestSwitch", "ON");
+        verifyRuleWasExecuted("[MemberOfUpdateTrigger]");
+        logLines.clear();
+        postUpdate("MyTestSwitch", "ON");
+        verifyRuleWasExecuted("[MemberOfUpdateTrigger]");
+        logLines.clear();
+        postUpdate("MyTestSwitch2", "ON");
+        verifyRuleWasExecuted("[MemberOfUpdateTrigger]");
+        logLines.clear();
+        postUpdate("MyTestSwitch2", "ON");
+        verifyRuleWasExecuted("[MemberOfUpdateTrigger]");
+    }
+
+    @Test
+    public void testMemberOfChangeTrigger() throws IOException {
+        postUpdate("MyTestSwitch", "ON");
+        verifyRuleWasExecuted("[MemberOfChangeTrigger]");
+        logLines.clear();
+        postUpdate("MyTestSwitch2", "ON");
+        verifyRuleWasExecuted("[MemberOfChangeTrigger]");
+    }
+
+    @Test
     public void testTestCron() {
         verifyRuleWasExecuted("[testCron]");
     }
@@ -294,7 +342,17 @@ public class ITJRule {
     private void sendCommand(String itemName, String value) throws IOException {
         try (CloseableHttpClient client = HttpClientBuilder.create()
                 .build()) {
-            HttpPost request = new HttpPost(String.format("http://%s:%s/rest/items/" + itemName, getOpenhabHost(), getOpenhabPort()));
+            HttpPost request = new HttpPost(String.format("http://%s:%s/rest/items/%s", getOpenhabHost(), getOpenhabPort(), itemName));
+            request.setEntity(new StringEntity(value));
+            CloseableHttpResponse response = client.execute(request);
+            Assertions.assertEquals(2, response.getCode() / 100);
+        }
+    }
+
+    private void postUpdate(String itemName, String value) throws IOException {
+        try (CloseableHttpClient client = HttpClientBuilder.create()
+                .build()) {
+            HttpPut request = new HttpPut(String.format("http://%s:%s/rest/items/%s/state", getOpenhabHost(), getOpenhabPort(), itemName));
             request.setEntity(new StringEntity(value));
             CloseableHttpResponse response = client.execute(request);
             Assertions.assertEquals(2, response.getCode() / 100);
